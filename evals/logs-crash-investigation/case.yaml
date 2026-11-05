@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: logs-crash-investigation
+expected_outcome: |
+  incidents.md: 9 падений (6 из-за OutOfMemoryError на srv-03×4 и srv-07×2, 3 из-за No space left on device на srv-11), топ ошибок с точными количествами.
+context:
+  scaffold_script: place-files.sh

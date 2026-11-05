@@ -1,0 +1,14 @@
+{
+  "name": "claude-manager-mode",
+  "description": "Manager mode for Claude Code: Opus plans and checks, Haiku/Sonnet subagents execute \u2014 measured, with a rule for when delegation pays off.",
+  "owner": {
+    "name": "MeiramALu"
+  },
+  "plugins": [
+    {
+      "name": "task-router-general",
+      "source": "./",
+      "description": "Manager mode: Opus thinks, Haiku/Sonnet subagents execute \u0432\u0402\u201d with a measured rule for when it saves tokens."
+    }
+  ]
+}

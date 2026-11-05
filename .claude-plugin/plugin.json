@@ -1,0 +1,8 @@
+{
+  "name": "task-router-general",
+  "version": "1.0.0",
+  "description": "Manager mode for Claude Code: Opus plans, writes prompts and checks results; cheap Haiku/Sonnet subagents do the hands-on work in parallel. Includes a cost rule for when delegation actually pays off. (RU skill text, EN/RU docs)",
+  "author": { "name": "MeiramALu" },
+  "license": "MIT",
+  "keywords": ["subagents", "orchestration", "token-saving", "manager", "haiku", "sonnet", "opus"]
+}

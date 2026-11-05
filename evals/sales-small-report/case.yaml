@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: sales-small-report
+expected_outcome: |
+  report.md с выручкой 24 магазинов по убыванию (первый store_21 — 861.25) и лидером по штукам coffee (856); report.py пересчитывает то же самое. Задача маленькая — правильно сделать её без субагентов.
+context:
+  scaffold_script: place-files.sh

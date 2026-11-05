@@ -1,0 +1,17 @@
+{
+ "crashes": 9,
+ "by_cause": {
+  "OutOfMemoryError": 6,
+  "No space left on device": 3
+ },
+ "by_server": {
+  "srv-03": 4,
+  "srv-07": 2,
+  "srv-11": 3
+ },
+ "errors": {
+  "DB connection timeout": 230,
+  "Payment gateway 502": 88,
+  "Cache miss storm": 41
+ }
+}

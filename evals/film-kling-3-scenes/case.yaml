@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: film-kling-3-scenes
+expected_outcome: |
+  final.mp4 1280x720 со звуком, длина = длине озвучки, голос не обрезан, сцены photo1→photo2→photo3 сменяются на границах фраз, клипы сгенерированы на сайте без лишних перегенераций.
+context:
+  scaffold_script: place-files.sh

@@ -124,6 +124,19 @@ def snapshot(path):
     return "\n\n".join(parts)[:SNAP_MAX]
 
 
+def install_statusline(data_dir):
+    """Keep a copy of statusline.py at a path that survives plugin updates (the data dir)."""
+    try:
+        src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "statusline.py")
+        dst = os.path.join(data_dir, "statusline.py")
+        new = open(src, "rb").read()
+        if not os.path.exists(dst) or open(dst, "rb").read() != new:
+            os.makedirs(data_dir, exist_ok=True)
+            open(dst, "wb").write(new)
+    except OSError:
+        pass
+
+
 def main():
     data_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/.claude/ctx_guard")
     inp = json.load(sys.stdin)
@@ -141,6 +154,7 @@ def main():
         return
 
     if ev == "SessionStart":
+        install_statusline(data_dir)
         src = inp.get("source")
         if src == "compact":
             parts = []

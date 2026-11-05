@@ -1,0 +1,27 @@
+{
+  "description": "Context guard: tells the model the real chat size, keeps .claude/handoff.md up to date before auto-compaction and restores it afterwards.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/ctx_guard.py\" \"${CLAUDE_PLUGIN_DATA}\"", "timeout": 10 }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/ctx_guard.py\" \"${CLAUDE_PLUGIN_DATA}\"", "timeout": 10 }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          { "type": "command", "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/ctx_guard.py\" \"${CLAUDE_PLUGIN_DATA}\"", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}

@@ -42,10 +42,24 @@ Takeaways:
 - Each subagent costs 15–32k tokens just to start. One Haiku card with two tasks was 3× cheaper than two separate agents.
 - Hidden cost: every subagent launch and every completion notice is a full manager turn. Fewer, bigger cards are better.
 
+### Automatic mode: the chat compacts itself, nothing is lost
+
+The plugin ships hooks (`hooks/hooks.json` + `scripts/ctx_guard.py`, needs Python):
+- **Real chat size for the model.** Every +50k tokens it tells the model how big the chat is and what one step costs. Without this, models misjudge it, which was the main weakness in our tests.
+- **Handoff before compaction.** From 70% of the auto-compact window it asks the model to keep `.claude/handoff.md` up to date (goal, done, decisions, paths, next step).
+- **Restore after compaction.** After every auto or manual compaction, the hook puts `handoff.md` back into context. Tested: after 3 automatic compactions in a row, the model still had the exact details from the file.
+
+To make Claude Code compact earlier (cheaper steps), add to `~/.claude/settings.json`:
+```json
+{ "env": { "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "150000", "CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS": "100000" } }
+```
+The chat then compacts itself at ~150k tokens, or at 100k when you come back after a pause. Combined with the handoff file, that works like an automatic "move to a new chat".
+
 ### Contents
 
 - `skills/task-router-general/SKILL.md` — the skill (in Russian; models follow it fine in any language).
 - `skills/task-router-general/agent_stats.py` — per-subagent cost/time report for a session: `python agent_stats.py ~/.claude/projects/<project>/<session-id>/subagents`
+- `hooks/`, `scripts/ctx_guard.py` — the context guard described above.
 - `evals/` — the 3 test cases. Run them with `claude plugin eval . --scaffold --allow-tools Write,Edit,Bash,Agent` (these are real, billed model runs).
 
 ---
@@ -88,10 +102,24 @@ Takeaways:
 - Старт любого субагента стоит 15–32 тыс. токенов. Одна карточка Haiku с двумя задачами вышла в 3 раза дешевле двух отдельных агентов.
 - Скрытая цена: каждый запуск и каждое уведомление о завершении — полный ход менеджера. Лучше меньше карточек, но крупнее.
 
+### Автоматический режим: чат сжимается сам, ничего не теряется
+
+В плагине есть хуки (`hooks/hooks.json` + `scripts/ctx_guard.py`, нужен Python):
+- **Модель знает реальный размер чата.** Каждые +50 тыс. токенов хук сообщает размер чата и цену одного шага. Без этого модель ошибается — это была главная слабость в тестах.
+- **Сохранение перед сжатием.** С 70% порога автосжатия хук просит модель обновлять `.claude/handoff.md`: цель, что сделано, решения, пути, следующий шаг.
+- **Возврат после сжатия.** После каждого авто- или ручного сжатия хук возвращает `handoff.md` в контекст. Проверено: после 3 автосжатий подряд модель помнила точные детали из файла.
+
+Чтобы Claude Code сжимал чат раньше (каждый шаг дешевле), добавь в `~/.claude/settings.json`:
+```json
+{ "env": { "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "150000", "CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS": "100000" } }
+```
+Тогда чат сам сожмётся при ~150 тыс. токенов, а после перерыва — при 100 тыс. Вместе с handoff-файлом это работает как автоматический «перенос в новый чат».
+
 ### Состав
 
 - `skills/task-router-general/SKILL.md` — сам скилл.
 - `skills/task-router-general/agent_stats.py` — отчёт по расходу субагентов сессии: `python agent_stats.py ~/.claude/projects/<проект>/<id-сессии>/subagents`
+- `hooks/`, `scripts/ctx_guard.py` — контролёр контекста, описанный выше.
 - `evals/` — 3 теста. Запуск: `claude plugin eval . --scaffold --allow-tools Write,Edit,Bash,Agent` (это настоящие платные прогоны моделей).
 
 ## License

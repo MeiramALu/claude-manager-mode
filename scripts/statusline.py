@@ -67,6 +67,10 @@ def main():
 
 if __name__ == "__main__":
     try:
+        sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1251/cp866
+    except Exception:
+        pass
+    try:
         main()
     except Exception:
         print("ctx ?")

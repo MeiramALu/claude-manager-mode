@@ -2,9 +2,9 @@
 
 Hook events:
   PostToolUse / UserPromptSubmit — tells the model the real chat size (once per +STEP tokens),
-      and near the auto-compact threshold asks it to keep .claude/handoff.md up to date.
+      and near the auto-compact threshold asks it to keep .handoff.md (project root) up to date.
   PreCompact — saves a mechanical snapshot (goal, recent requests, changed files, todos) as a fallback.
-  SessionStart (compact) — puts .claude/handoff.md and the snapshot back into context after compaction.
+  SessionStart (compact) — puts .handoff.md and the snapshot back into context after compaction.
   SessionStart (startup/clear/resume) — mentions an unfinished handoff.md if it is fresh.
 
 Usage in hooks.json: python ctx_guard.py <data_dir>. Never fails the session: any error -> silent exit 0.
@@ -13,7 +13,7 @@ import json, os, sys, time
 
 STEP = 50_000            # report chat size every +50k tokens
 FIRST = 50_000           # first report at 50k
-WARN_SHARE = 0.7         # handoff reminder from 70% of the auto-compact window
+WARN_SHARE = 0.7         # handoff reminder from 70% of the auto-compact point
 WARN_STEP = 15_000       # repeat the handoff reminder every +15k
 HANDOFF_MAX = 9_000      # chars injected after compaction (handoff.md + auto snapshot)
 SNAP_MAX = 3_000         # chars of the automatic snapshot
@@ -51,6 +51,11 @@ def ctx_size(path):
 
 
 def window():
+    """Token count at which Claude Code auto-compacts.
+
+    Claude Code compacts at window - 20k (reserved for the reply) - 13k (buffer),
+    e.g. ~117k for a 150k window. Measured: compactions at 117k-126k with a 150k window.
+    """
     v = os.environ.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "").lower().replace("_", "")
     try:
         w = int(float(v[:-1]) * 1000) if v.endswith("k") else int(v)
@@ -58,12 +63,16 @@ def window():
         w = 200_000
     pct = os.environ.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE")
     if pct and pct.isdigit():
-        w = int(w * int(pct) / 100)
-    return w
+        return int((w - 20_000) * int(pct) / 100)
+    return max(w - 33_000, w // 2)
 
 
 def handoff_path(cwd):
-    return os.path.normpath(os.path.join(cwd or ".", ".claude", "handoff.md"))
+    """.handoff.md in the project root. Not inside .claude/: Claude Code asks permission to write there,
+    which would stop an unattended session. The old .claude/handoff.md is still read if it is the only one."""
+    new = os.path.normpath(os.path.join(cwd or ".", ".handoff.md"))
+    old = os.path.normpath(os.path.join(cwd or ".", ".claude", "handoff.md"))
+    return old if os.path.exists(old) and not os.path.exists(new) else new
 
 
 def age_text(p):
@@ -194,11 +203,11 @@ def main():
                     f"дешевле отдавать субагентам (haiku/sonnet), а независимые вызовы делать одной пачкой.")
     w = window()
     grow = n - prev if 0 < prev < n else 0
-    if grow and n + 2 * grow >= w * 0.95 and n < w and n >= st["warn_mark"] + grow:
+    if grow and n + 2 * grow >= w and n < w and n >= st["warn_mark"] + grow:
         st["warn_mark"] = n            # fast growth: compaction may come within 1-2 steps
         msgs.append(f"Чат растёт быстро (+{grow // 1000} тыс. за шаг), автосжатие (~{w // 1000} тыс.) может "
                     f"наступить через 1–2 шага. Обнови {hp} сейчас, до следующего большого вывода: цель, "
-                    f"сделано, решения, пути, следующий шаг.")
+                    f"сделано, решения, пути, следующий шаг. Когда вся задача будет готова — удали этот файл.")
     elif n >= w * WARN_SHARE and n >= st["warn_mark"] + WARN_STEP:
         st["warn_mark"] = n
         msgs.append(f"Автосжатие чата наступит примерно при {w // 1000} тыс. токенов. Состояние работы "

@@ -46,18 +46,18 @@ Takeaways:
 
 The plugin ships hooks (`hooks/hooks.json` + `scripts/ctx_guard.py`, needs Python):
 - **Real chat size for the model.** Every +50k tokens it tells the model how big the chat is and what one step costs. Without this, models misjudge it, which was the main weakness in our tests.
-- **Handoff before compaction.** From 70% of the auto-compact window it asks the model to keep `.claude/handoff.md` up to date (goal, done, decisions, paths, next step).
+- **Handoff before compaction.** From 70% of the auto-compact point it asks the model to keep `.handoff.md` in the project root up to date (goal, done, decisions, paths, next step).
 - **Fast growth.** If the chat grows so fast that compaction may come within 1–2 steps, it asks for the handoff right away.
 - **Auto snapshot.** Right before compaction the hook saves, with no model involved, the first request (the goal), the last requests, the changed files and the todo list. This is a fallback in case the model never wrote `handoff.md`.
-- **Restore after compaction.** After every auto or manual compaction, the hook puts `handoff.md` and the snapshot back into context. Tested: after 3 automatic compactions in a row, the model still had the exact details from the file.
+- **Restore after compaction.** After every auto or manual compaction, the hook puts `.handoff.md` and the snapshot back into context. Tested: after 3 automatic compactions in a row, the model still had the exact details from the file.
 
 To make Claude Code compact earlier (cheaper steps), add to `~/.claude/settings.json`:
 ```json
 { "env": { "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "150000", "CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS": "100000" } }
 ```
-The chat then compacts itself at ~150k tokens, or at 100k when you come back after a pause. Combined with the handoff file, that works like an automatic "move to a new chat".
+The chat then compacts itself at ~117k tokens (Claude Code compacts ~33k below the window: 20k reserved for the reply plus a 13k buffer), or at 100k when you come back after a pause. Combined with the handoff file, that works like an automatic "move to a new chat".
 
-**Status line** (optional): chat size against the compaction threshold, the cost of one step, and the session cost, e.g. `ctx 87k/150k 58% · step ~$0.04 · session $1.23`. The plugin copies the script to its data folder on every session start, so the path stays the same across updates:
+**Status line** (optional): chat size against the compaction threshold, the cost of one step, and the session cost, e.g. `ctx 87k/117k 74% · step ~$0.04 · session $1.23` (117k = the point where the chat compacts). The plugin copies the script to its data folder on every session start, so the path stays the same across updates:
 ```json
 { "statusLine": { "type": "command", "command": "python ~/.claude/plugins/data/task-router-general-claude-manager-mode/statusline.py" } }
 ```
@@ -114,18 +114,18 @@ The chat then compacts itself at ~150k tokens, or at 100k when you come back aft
 
 В плагине есть хуки (`hooks/hooks.json` + `scripts/ctx_guard.py`, нужен Python):
 - **Модель знает реальный размер чата.** Каждые +50 тыс. токенов хук сообщает размер чата и цену одного шага. Без этого модель ошибается — это была главная слабость в тестах.
-- **Сохранение перед сжатием.** С 70% порога автосжатия хук просит модель обновлять `.claude/handoff.md`: цель, что сделано, решения, пути, следующий шаг.
+- **Сохранение перед сжатием.** С 70% порога автосжатия хук просит модель обновлять `.handoff.md` в корне проекта: цель, что сделано, решения, пути, следующий шаг.
 - **Быстрый рост.** Если чат растёт так быстро, что сжатие может наступить через 1–2 шага, хук просит обновить handoff сразу.
 - **Автоснимок.** Перед сжатием хук сам, без участия модели, сохраняет первый запрос (цель), последние запросы, изменённые файлы и список задач. Это запасной вариант на случай, если модель не записала `handoff.md`.
-- **Возврат после сжатия.** После каждого авто- или ручного сжатия хук возвращает `handoff.md` и автоснимок в контекст. Проверено: после 3 автосжатий подряд модель помнила точные детали из файла.
+- **Возврат после сжатия.** После каждого авто- или ручного сжатия хук возвращает `.handoff.md` и автоснимок в контекст. Проверено: после 3 автосжатий подряд модель помнила точные детали из файла.
 
 Чтобы Claude Code сжимал чат раньше (каждый шаг дешевле), добавь в `~/.claude/settings.json`:
 ```json
 { "env": { "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "150000", "CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS": "100000" } }
 ```
-Тогда чат сам сожмётся при ~150 тыс. токенов, а после перерыва — при 100 тыс. Вместе с handoff-файлом это работает как автоматический «перенос в новый чат».
+Тогда чат сам сожмётся при ~117 тыс. токенов (Claude Code сжимает на ~33 тыс. раньше окна: 20 тыс. под ответ и 13 тыс. запаса), а после перерыва — при 100 тыс. Вместе с handoff-файлом это работает как автоматический «перенос в новый чат».
 
-**Строка состояния** (по желанию): размер чата относительно порога сжатия, цена одного шага и цена сессии, например `ctx 87k/150k 58% · step ~$0.04 · session $1.23`. Плагин при каждом старте сессии копирует скрипт в свою папку данных, поэтому путь не меняется при обновлениях:
+**Строка состояния** (по желанию): размер чата относительно порога сжатия, цена одного шага и цена сессии, например `ctx 87k/117k 74% · step ~$0.04 · session $1.23` (117k — точка, где чат сожмётся). Плагин при каждом старте сессии копирует скрипт в свою папку данных, поэтому путь не меняется при обновлениях:
 ```json
 { "statusLine": { "type": "command", "command": "python ~/.claude/plugins/data/task-router-general-claude-manager-mode/statusline.py" } }
 ```

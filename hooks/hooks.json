@@ -1,5 +1,5 @@
 {
-  "description": "Context guard: tells the model the real chat size, keeps .claude/handoff.md up to date before auto-compaction and restores it afterwards.",
+  "description": "Context guard: tells the model the real chat size, keeps .handoff.md up to date before auto-compaction and restores it afterwards.",
   "hooks": {
     "PostToolUse": [
       {

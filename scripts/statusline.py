@@ -1,6 +1,6 @@
 """Status line: chat size, cost of one step, session cost.
 
-Example: ctx 87k/150k 58% · step ~$0.04 · session $1.23
+Example: ctx 87k/117k 74%  (117k = point where the chat auto-compacts) · step ~$0.04 · session $1.23
 Settings: "statusLine": {"type": "command", "command": "python <path>/statusline.py"}
 """
 import json, os, sys
@@ -15,6 +15,11 @@ def window():
         return int(float(v[:-1]) * 1000) if v.endswith("k") else int(v)
     except ValueError:
         return 0
+
+
+def compact_point(w):
+    """Claude Code auto-compacts at window - 20k (reply reserve) - 13k (buffer)."""
+    return max(w - 33_000, w // 2)
 
 
 def from_transcript(path):
@@ -48,7 +53,7 @@ def main():
     n = sum(cu.get(k) or 0 for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
     if not n:
         n = from_transcript(d.get("transcript_path", ""))
-    w = window() or cw.get("context_window_size") or 200_000
+    w = compact_point(window() or cw.get("context_window_size") or 200_000)
     mid = ((d.get("model") or {}).get("id") or "").lower()
     price = next((p for k, p in CACHE_READ.items() if k in mid), CACHE_READ["opus"])
     share = n / w if w else 0

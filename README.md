@@ -39,7 +39,7 @@ Each run is a separate headless `claude -p` session. Cost = manager + all subage
 Takeaways:
 - **Fresh chat + scriptable work** (curl, ffmpeg, grep): Opus doing it itself is just as cheap. The skill now recognises this and doesn't delegate.
 - **Long chat**: every Opus step re-reads the whole history (~$0.05–0.10 per step). On a long job, handing the mechanics to a subagent cut the cost by 43%. On a short one (6 steps) the gain was small (−8%): most of the cost is reading the history once, which only compacting the chat removes.
-- Each subagent costs 15–32k tokens just to start. One Haiku card with two tasks was 3× cheaper than two separate agents.
+- Each general-purpose subagent costs 15–32k tokens just to start. The plugin ships lean executors (`worker` for shell and files, `web-worker` for web lookups) that start at ~11k instead of ~20k. One Haiku card with two tasks was 3× cheaper than two separate agents.
 - Hidden cost: every subagent launch and every completion notice is a full manager turn. Fewer, bigger cards are better.
 
 ### Automatic mode: the chat compacts itself, nothing is lost
@@ -47,7 +47,9 @@ Takeaways:
 The plugin ships hooks (`hooks/hooks.json` + `scripts/ctx_guard.py`, needs Python):
 - **Real chat size for the model.** Every +50k tokens it tells the model how big the chat is and what one step costs. Without this, models misjudge it, which was the main weakness in our tests.
 - **Handoff before compaction.** From 70% of the auto-compact window it asks the model to keep `.claude/handoff.md` up to date (goal, done, decisions, paths, next step).
-- **Restore after compaction.** After every auto or manual compaction, the hook puts `handoff.md` back into context. Tested: after 3 automatic compactions in a row, the model still had the exact details from the file.
+- **Fast growth.** If the chat grows so fast that compaction may come within 1–2 steps, it asks for the handoff right away.
+- **Auto snapshot.** Right before compaction the hook saves, with no model involved, the first request (the goal), the last requests, the changed files and the todo list. This is a fallback in case the model never wrote `handoff.md`.
+- **Restore after compaction.** After every auto or manual compaction, the hook puts `handoff.md` and the snapshot back into context. Tested: after 3 automatic compactions in a row, the model still had the exact details from the file.
 
 To make Claude Code compact earlier (cheaper steps), add to `~/.claude/settings.json`:
 ```json
@@ -55,11 +57,17 @@ To make Claude Code compact earlier (cheaper steps), add to `~/.claude/settings.
 ```
 The chat then compacts itself at ~150k tokens, or at 100k when you come back after a pause. Combined with the handoff file, that works like an automatic "move to a new chat".
 
+**Status line** (optional): chat size against the compaction threshold, the cost of one step, and the session cost, e.g. `ctx 87k/150k 58% · step ~$0.04 · session $1.23`. The plugin copies the script to its data folder on every session start, so the path stays the same across updates:
+```json
+{ "statusLine": { "type": "command", "command": "python ~/.claude/plugins/data/task-router-general-claude-manager-mode/statusline.py" } }
+```
+
 ### Contents
 
 - `skills/task-router-general/SKILL.md` — the skill (in Russian; models follow it fine in any language).
 - `skills/task-router-general/agent_stats.py` — per-subagent cost/time report for a session: `python agent_stats.py ~/.claude/projects/<project>/<session-id>/subagents`
-- `hooks/`, `scripts/ctx_guard.py` — the context guard described above.
+- `agents/` — lean executors `worker` and `web-worker` (Haiku by default).
+- `hooks/`, `scripts/ctx_guard.py` — the context guard described above. `scripts/statusline.py` — the status line.
 - `evals/` — the 3 test cases. Run them with `claude plugin eval . --scaffold --allow-tools Write,Edit,Bash,Agent` (these are real, billed model runs).
 
 ---
@@ -99,7 +107,7 @@ The chat then compacts itself at ~150k tokens, or at 100k when you come back aft
 Выводы:
 - **Свежий чат и работа скриптами** (curl, ffmpeg, grep): Opus сам справляется так же дёшево. Скилл это распознаёт и не раздаёт.
 - **Длинный чат**: каждый шаг Opus перечитывает всю историю (~$0.05–0.10 за шаг). На долгой работе механика, отданная исполнителю, снизила цену на 43%. На короткой (6 шагов) выигрыш небольшой (−8%): основная цена — разовое чтение истории, и убрать её может только сжатие чата.
-- Старт любого субагента стоит 15–32 тыс. токенов. Одна карточка Haiku с двумя задачами вышла в 3 раза дешевле двух отдельных агентов.
+- Старт обычного субагента стоит 15–32 тыс. токенов. В плагине есть лёгкие исполнители (`worker` — команды и файлы, `web-worker` — поиск в сети): старт ~11 тыс. вместо ~20 тыс. Одна карточка Haiku с двумя задачами вышла в 3 раза дешевле двух отдельных агентов.
 - Скрытая цена: каждый запуск и каждое уведомление о завершении — полный ход менеджера. Лучше меньше карточек, но крупнее.
 
 ### Автоматический режим: чат сжимается сам, ничего не теряется
@@ -107,7 +115,9 @@ The chat then compacts itself at ~150k tokens, or at 100k when you come back aft
 В плагине есть хуки (`hooks/hooks.json` + `scripts/ctx_guard.py`, нужен Python):
 - **Модель знает реальный размер чата.** Каждые +50 тыс. токенов хук сообщает размер чата и цену одного шага. Без этого модель ошибается — это была главная слабость в тестах.
 - **Сохранение перед сжатием.** С 70% порога автосжатия хук просит модель обновлять `.claude/handoff.md`: цель, что сделано, решения, пути, следующий шаг.
-- **Возврат после сжатия.** После каждого авто- или ручного сжатия хук возвращает `handoff.md` в контекст. Проверено: после 3 автосжатий подряд модель помнила точные детали из файла.
+- **Быстрый рост.** Если чат растёт так быстро, что сжатие может наступить через 1–2 шага, хук просит обновить handoff сразу.
+- **Автоснимок.** Перед сжатием хук сам, без участия модели, сохраняет первый запрос (цель), последние запросы, изменённые файлы и список задач. Это запасной вариант на случай, если модель не записала `handoff.md`.
+- **Возврат после сжатия.** После каждого авто- или ручного сжатия хук возвращает `handoff.md` и автоснимок в контекст. Проверено: после 3 автосжатий подряд модель помнила точные детали из файла.
 
 Чтобы Claude Code сжимал чат раньше (каждый шаг дешевле), добавь в `~/.claude/settings.json`:
 ```json
@@ -115,11 +125,17 @@ The chat then compacts itself at ~150k tokens, or at 100k when you come back aft
 ```
 Тогда чат сам сожмётся при ~150 тыс. токенов, а после перерыва — при 100 тыс. Вместе с handoff-файлом это работает как автоматический «перенос в новый чат».
 
+**Строка состояния** (по желанию): размер чата относительно порога сжатия, цена одного шага и цена сессии, например `ctx 87k/150k 58% · step ~$0.04 · session $1.23`. Плагин при каждом старте сессии копирует скрипт в свою папку данных, поэтому путь не меняется при обновлениях:
+```json
+{ "statusLine": { "type": "command", "command": "python ~/.claude/plugins/data/task-router-general-claude-manager-mode/statusline.py" } }
+```
+
 ### Состав
 
 - `skills/task-router-general/SKILL.md` — сам скилл.
 - `skills/task-router-general/agent_stats.py` — отчёт по расходу субагентов сессии: `python agent_stats.py ~/.claude/projects/<проект>/<id-сессии>/subagents`
-- `hooks/`, `scripts/ctx_guard.py` — контролёр контекста, описанный выше.
+- `agents/` — лёгкие исполнители `worker` и `web-worker` (по умолчанию Haiku).
+- `hooks/`, `scripts/ctx_guard.py` — контролёр контекста, описанный выше. `scripts/statusline.py` — строка состояния.
 - `evals/` — 3 теста. Запуск: `claude plugin eval . --scaffold --allow-tools Write,Edit,Bash,Agent` (это настоящие платные прогоны моделей).
 
 ## License

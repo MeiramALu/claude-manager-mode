@@ -62,12 +62,41 @@ The chat then compacts itself at ~117k tokens (Claude Code compacts ~33k below t
 { "statusLine": { "type": "command", "command": "python ~/.claude/plugins/data/task-router-general-claude-manager-mode/statusline.py" } }
 ```
 
+### Big-file guard
+
+Every new piece of text that enters the chat is written to the prompt cache once, at 12.5× the cost of re-reading it. In our long-chat tests these cache writes were the largest part of the bill. So when the main chat tries to `Read` a whole file bigger than ~8k tokens (no `offset`/`limit`), the hook stops it once. It tells the model the size and the cost, and suggests Grep plus a partial read, or handing the file to a subagent. If the model repeats the same Read, it goes through. Subagents are never stopped. Images, PDFs and notebooks are skipped.
+Threshold: env `TRG_BIG_READ_TOKENS` (default `8000`, `0` turns it off).
+
+### Cost report: `/task-router-general:cost`
+
+Shows where this session's money went, at API prices:
+- the main chat, split into re-reading history, new text and replies;
+- the subagents;
+- the number of compactions;
+- the biggest tool outputs;
+- what to change.
+
+Example: `≈ $24.32 · re-reading 55% · new text 22% · replies 21% · subagents 2%`. Outside Claude Code: `python scripts/session_report.py [session-id | path.jsonl]`.
+
+### Recommended settings (measured, Opus 5.5, Nov 2026)
+
+| Setting | Test | Result |
+|---|---|---|
+| `effort medium` instead of `high` | logs investigation | **$0.44 → $0.29 (−34%)**, 398 s → 65 s, same correct answer |
+| Sonnet instead of Opus | same | $0.17 (−61%), 46 s, same correct answer |
+| Compact window 120k instead of 150k | 8 files + 40k history, forced compactions | **$1.74 → $1.98 (+14%)**, 24 → 29 steps. Don't go lower than 150k |
+
+- **Routine work:** `/effort medium`, or permanently in `settings.json`: `"modelSettings": { "claude-opus-5-5": { "effortLevel": "medium" } }`. Keep `high` for hard design or debugging.
+- **Medium tasks:** `/model sonnet`, or `/model opusplan` (Opus only while planning in plan mode, Sonnet for the work). opusplan was not measured separately: headless runs have no plan mode.
+- **Compaction:** keep `CLAUDE_CODE_AUTO_COMPACT_WINDOW=150000`. Compacting earlier means more compactions and a re-read summary each time, so in our test it cost more, not less.
+
 ### Contents
 
 - `skills/task-router-general/SKILL.md` — the skill (in Russian; models follow it fine in any language).
 - `skills/task-router-general/agent_stats.py` — per-subagent cost/time report for a session: `python agent_stats.py ~/.claude/projects/<project>/<session-id>/subagents`
 - `agents/` — lean executors `worker` and `web-worker` (Haiku by default).
-- `hooks/`, `scripts/ctx_guard.py` — the context guard described above. `scripts/statusline.py` — the status line.
+- `hooks/`, `scripts/ctx_guard.py` — the context guard and the big-file guard described above. `scripts/statusline.py` — the status line.
+- `commands/cost.md`, `scripts/session_report.py` — the `/task-router-general:cost` report.
 - `evals/` — the 3 test cases. Run them with `claude plugin eval . --scaffold --allow-tools Write,Edit,Bash,Agent` (these are real, billed model runs).
 
 ---
@@ -130,12 +159,41 @@ The chat then compacts itself at ~117k tokens (Claude Code compacts ~33k below t
 { "statusLine": { "type": "command", "command": "python ~/.claude/plugins/data/task-router-general-claude-manager-mode/statusline.py" } }
 ```
 
+### Защита от чтения больших файлов
+
+Каждый новый текст в чате один раз записывается в кэш, и это в 12,5 раза дороже, чем потом его перечитывать. В наших тестах длинного чата эти записи были самой большой частью счёта. Поэтому если главный чат пытается прочитать через `Read` целиком файл больше ~8 тыс. токенов (без `offset`/`limit`), хук один раз его останавливает. Он сообщает размер и цену и предлагает Grep плюс чтение частями или передачу файла исполнителю. Если модель повторит тот же Read, он пройдёт. Субагентов хук не трогает, картинки, PDF и блокноты пропускает.
+Порог: переменная `TRG_BIG_READ_TOKENS` (по умолчанию `8000`, `0` выключает).
+
+### Отчёт о расходах: `/task-router-general:cost`
+
+Показывает, куда ушли деньги сессии (по ценам API):
+- главный чат: перечитывание истории, новый текст, ответы;
+- субагенты;
+- число сжатий;
+- самые большие выводы инструментов;
+- что поменять.
+
+Пример: `≈ $24.32 · перечитывание 55% · новый текст 22% · ответы 21% · субагенты 2%`. Вне Claude Code: `python scripts/session_report.py [id-сессии | путь.jsonl]`.
+
+### Рекомендуемые настройки (замеры, Opus 5.5, ноябрь 2026)
+
+| Настройка | Тест | Результат |
+|---|---|---|
+| `effort medium` вместо `high` | разбор логов | **$0.44 → $0.29 (−34%)**, 398 с → 65 с, ответ тот же и верный |
+| Sonnet вместо Opus | то же | $0.17 (−61%), 46 с, ответ тот же и верный |
+| Окно сжатия 120k вместо 150k | 8 файлов + 40 тыс. истории, вынужденные сжатия | **$1.74 → $1.98 (+14%)**, 24 → 29 шагов. Ниже 150k не опускать |
+
+- **Рутина:** `/effort medium`, или навсегда в `settings.json`: `"modelSettings": { "claude-opus-5-5": { "effortLevel": "medium" } }`. `high` оставь для сложной архитектуры и отладки.
+- **Средние задачи:** `/model sonnet` или `/model opusplan` (Opus только при планировании в plan mode, работу делает Sonnet). opusplan отдельно не замеряли: в фоновых прогонах нет plan mode.
+- **Сжатие:** оставь `CLAUDE_CODE_AUTO_COMPACT_WINDOW=150000`. При более раннем сжатии сжатий больше, и каждый раз заново читается сводка, поэтому в тесте вышло дороже, а не дешевле.
+
 ### Состав
 
 - `skills/task-router-general/SKILL.md` — сам скилл.
 - `skills/task-router-general/agent_stats.py` — отчёт по расходу субагентов сессии: `python agent_stats.py ~/.claude/projects/<проект>/<id-сессии>/subagents`
 - `agents/` — лёгкие исполнители `worker` и `web-worker` (по умолчанию Haiku).
-- `hooks/`, `scripts/ctx_guard.py` — контролёр контекста, описанный выше. `scripts/statusline.py` — строка состояния.
+- `hooks/`, `scripts/ctx_guard.py` — контролёр контекста и защита от больших файлов, описанные выше. `scripts/statusline.py` — строка состояния.
+- `commands/cost.md`, `scripts/session_report.py` — отчёт `/task-router-general:cost`.
 - `evals/` — 3 теста. Запуск: `claude plugin eval . --scaffold --allow-tools Write,Edit,Bash,Agent` (это настоящие платные прогоны моделей).
 
 ## License

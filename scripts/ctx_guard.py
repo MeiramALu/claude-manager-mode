@@ -6,6 +6,8 @@ Hook events:
   PreCompact — saves a mechanical snapshot (goal, recent requests, changed files, todos) as a fallback.
   SessionStart (compact) — puts .handoff.md and the snapshot back into context after compaction.
   SessionStart (startup/clear/resume) — mentions an unfinished handoff.md if it is fresh.
+  PreToolUse (Read) — stops the first whole-file read of a big text file once and suggests reading
+      a part, searching or delegating; repeating the same Read goes through.
 
 Usage in hooks.json: python ctx_guard.py <data_dir>. Never fails the session: any error -> silent exit 0.
 """
@@ -18,6 +20,9 @@ WARN_STEP = 15_000       # repeat the handoff reminder every +15k
 HANDOFF_MAX = 9_000      # chars injected after compaction (handoff.md + auto snapshot)
 SNAP_MAX = 3_000         # chars of the automatic snapshot
 OPUS_CACHE_READ = 0.5e-6  # $ per token
+OPUS_CACHE_WRITE = 6.25e-6
+BIG_READ_TOKENS = 8_000   # whole-file Read above this is stopped once (env TRG_BIG_READ_TOKENS, 0 = off)
+BINARY_EXT = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".pdf", ".ipynb", ".svg")
 
 
 def out(event, text):
@@ -146,12 +151,59 @@ def install_statusline(data_dir):
         pass
 
 
+def est_tokens(path):
+    """Rough token count of a text file: ~2 bytes per token for logs/code (Read adds line numbers), ~4.5 for Cyrillic UTF-8."""
+    size = os.path.getsize(path)
+    with open(path, "rb") as f:
+        head = f.read(8000)
+    if 0 in head:
+        return 0                        # binary
+    wide = sum(1 for b in head if b >= 0x80) / max(1, len(head))
+    return int(size / (2 + 2.5 * wide))
+
+
+def big_read(inp, data_dir):
+    i = inp.get("tool_input") or {}
+    p = i.get("file_path") or ""
+    lim = os.environ.get("TRG_BIG_READ_TOKENS", "")
+    lim = int(lim) if lim.isdigit() else BIG_READ_TOKENS
+    if not lim or not p or i.get("offset") or i.get("limit") or i.get("pages") or p.lower().endswith(BINARY_EXT):
+        return
+    try:
+        n = est_tokens(p)
+    except OSError:
+        return
+    if n < lim:
+        return
+    sp = os.path.join(data_dir, f"{inp.get('session_id', 'x')}.reads.json")
+    try:
+        seen = json.load(open(sp))
+    except (OSError, ValueError):
+        seen = []
+    key = os.path.normcase(os.path.abspath(p))
+    if key in seen:                     # second attempt: the model decided it needs the whole file
+        return
+    os.makedirs(data_dir, exist_ok=True)
+    json.dump(seen + [key], open(sp, "w"))
+    reason = (f"Файл большой: ~{n // 1000} тыс. токенов. Целиком он останется в чате до сжатия "
+              f"(≈ ${n * OPUS_CACHE_WRITE:.2f} один раз и ещё ≈ ${n * OPUS_CACHE_READ:.3f} за каждый следующий шаг). "
+              f"Если нужна часть — найди её через Grep или Bash (grep -n, wc, head) и прочитай Read с offset/limit. "
+              f"Если нужно разобрать весь файл — отдай это субагенту (task-router-general:worker) и попроси короткий итог. "
+              f"Если файл действительно нужен целиком — повтори этот же Read, второй раз он пройдёт.")
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                             "permissionDecisionReason": reason}}, ensure_ascii=True))
+
+
 def main():
     data_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/.claude/ctx_guard")
     inp = json.load(sys.stdin)
     if inp.get("agent_id"):           # subagents: their context is small and separate
         return
     ev = inp.get("hook_event_name", "")
+    if ev == "PreToolUse":
+        if inp.get("tool_name") == "Read":
+            big_read(inp, data_dir)
+        return
     hp = handoff_path(inp.get("cwd"))
     snap_p = os.path.join(data_dir, f"{inp.get('session_id', 'x')}.auto.md")
 
